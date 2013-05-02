@@ -54,7 +54,6 @@
 {
     [super viewDidLoad];
     [self setupModel]; // add model limits
-    _staffArray = @[].mutableCopy;
     [self setupStaffView];
     [self createBackButton];
     [self addKeyboardAuto];
@@ -134,6 +133,8 @@
 
 
 - (void)setupModel {
+    _staffArray = @[].mutableCopy;
+    
     _notesModel = @[].mutableCopy;
     for (int i = 0; i<15; i++) {
         int random = arc4random()%10;
@@ -261,24 +262,6 @@
 #   endif
     }
     
-//    // Notes
-//    for (id modelObject in _notesModel) {  // take this from the mdoel
-//        StaffAutoLean *staffAuto = [[StaffAutoLean alloc] initWithFrame:CGRectZero];
-//        [staffAuto setAlpha:0.];
-//        [staffAuto setType:kWithNote];
-//        [_staffView addSubview:staffAuto];
-//        [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[staffAuto]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAuto)]];
-//        [_staffArray addObject:staffAuto];
-//        
-//#   ifdef spacer
-//        StaffAutoLean *staffAutoSpacer = [[StaffAutoLean alloc] initAsSpacer];
-//        [staffAutoSpacer setAlpha:0.];
-//        [staffAutoSpacer setType:kSpacer];
-//        [_staffView addSubview:staffAutoSpacer];
-//        [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[staffAutoSpacer]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAutoSpacer)]];
-//        [_staffArray addObject:staffAutoSpacer];
-//#   endif
-//    }
     UIView *previousView = nil;
     
     UIView *firstView = [_notesOnStaffArray objectAtIndex:0];

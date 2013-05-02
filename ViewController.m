@@ -11,17 +11,23 @@
 #import "Staff.h"
 #import "WhiteKey.h"
 #import "BlackKey.h"
+#import "StaffAutoLean.h"
 #import "AutoLayoutGameViewController.h"
 
 @interface ViewController ()
 @property (nonatomic, strong) NSDictionary *keyDetails;
 @property (nonatomic, strong) NSMutableArray *orderedKeyNames;
-@property (nonatomic, strong) NSString *keySelected;
-@property (nonatomic, strong) NSString *clefSelected;
 @property (nonatomic, strong) Staff *staff;
 @property (nonatomic, strong) KeyboardAuto *keyboardAuto;
 @property (nonatomic) CGFloat keyBoardConstant;
 @property (nonatomic, strong) NSLayoutConstraint *horizontalPosition;
+@property (strong,nonatomic) UIView *staffView;
+@property (strong,nonatomic) NSMutableArray *staffArray;
+@property (strong,nonatomic) NSMutableArray *notesModel;
+@property (strong,nonatomic) NSMutableArray *notesOnStaffArray;
+@property (nonatomic, strong) NSString *currentKey;
+@property (nonatomic, strong) NSString *currentClef;
+- (void)animateWithObjectAtIndex:(int)index;
 @end
 
 @implementation ViewController
@@ -45,7 +51,12 @@
     [self.optionPicker setDelegate:self]; // UIPicker for Key and Clef
     [self.optionPicker setDataSource:self];
     
-    [self placeStaff];
+    // [self placeStaff];
+    [self setupModel];
+    [self setInitialKeyAndClef];
+    [self setupStaffView];
+    [self revealStaff];
+    
     [self placeKeyboard];
 //    UIPanGestureRecognizer *panRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
 //    [_keyboardAuto addGestureRecognizer:panRecognizer];
@@ -87,6 +98,33 @@
 //    
 //}
 
+- (void)revealStaff {
+    NSMutableArray *staffsWithNotesArray = [self staffsWithNotes];
+    
+    for (int i = 0; i<[_notesModel count]; i++) {
+        StaffAutoLean *staffAuto = [staffsWithNotesArray objectAtIndex:i];
+        
+        [staffAuto presentNote:(NSNumber *)[_notesModel objectAtIndex:i]];
+    }
+}
+
+- (NSMutableArray *)staffsWithNotes {
+    NSMutableArray *staffsWithNotesArray = @[].mutableCopy;
+    for (StaffAutoLean *staffAuto in _staffArray) {
+        if (staffAuto.type == kWithNote) {
+            [staffsWithNotesArray addObject:staffAuto];
+        }
+    }
+    return staffsWithNotesArray;
+}
+
+- (void)setInitialKeyAndClef {
+    NSString *keyNameInPicker = [_orderedKeyNames objectAtIndex: [_optionPicker selectedRowInComponent:1]];
+    int clefOption = [_optionPicker selectedRowInComponent:0];
+    _currentKey = [self keyIDForKeyNameInPicker:keyNameInPicker];
+    _currentClef = [self clefNameForClefNameInPicker:clefOption];
+}
+
 - (void)placeKeyboard {
     _keyboardAuto = [[KeyboardAuto alloc] initWithDelegate:self];
     [self.view addSubview:_keyboardAuto];
@@ -95,6 +133,105 @@
     [self.view addConstraint: [NSLayoutConstraint constraintWithItem:_keyboardAuto attribute:NSLayoutAttributeCenterX relatedBy:NSLayoutRelationEqual toItem:self.view attribute:NSLayoutAttributeCenterX multiplier:1.0 constant:0]];
 //    [self.view addConstraint:_horizontalPosition];
 }
+
+- (void)setupModel {
+    _staffArray = @[].mutableCopy;
+    _notesModel = @[].mutableCopy;
+    for (int i = 0; i<5; i++) {
+        int random = arc4random()%10;
+        random = random+10;
+        NSNumber *randomNote = [NSNumber numberWithInt:random];
+        [_notesModel addObject:randomNote];
+    }
+}
+
+
+- (void)setupStaffView {
+    _staffView = [[UIView alloc] init];
+    [_staffView setTranslatesAutoresizingMaskIntoConstraints:NO];
+    [_staffView setBackgroundColor:[UIColor redColor]];
+    [self.view addSubview:_staffView];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:[_staffView]-20-|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(_staffView)]];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|-(40)-[_staffView]" options:0 metrics:nil views:NSDictionaryOfVariableBindings(_staffView)]];
+    
+    // Clef
+    StaffAutoLean *staffAutoClef  = [self buildClef]; // at index 0 in _staffArray
+    [_staffArray addObject:staffAutoClef];
+    
+    // Spacer
+    StaffAutoLean *staffKeySpace = [self buildKeyStaff]; // at index 1 in _staffArray
+    [_staffArray addObject:staffKeySpace];
+    
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-(30)-[staffAutoClef][staffKeySpace]" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAutoClef,staffKeySpace)]];
+    
+    _notesOnStaffArray = @[].mutableCopy;
+    // notes sliding off to the left will need to be animated with autolayout here, maybe slide behind the spacer - spacer z index to fade?
+    
+    // Notes
+    for (id modelObject in _notesModel) {  // take this from the mdoel
+        StaffAutoLean * staffAuto = [self buildStaffWithNote];
+        [_staffArray addObject:staffAuto];
+        [_notesOnStaffArray addObject:staffAuto];
+#   ifdef spacer
+        StaffAutoLean *staffAutoSpacer = [self buildSpacer];
+        [_staffArray addObject:staffAutoSpacer];
+        [_notesOnStaffArray addObject:staffAutoSpacer];
+#   endif
+    }
+    
+    UIView *previousView = nil;
+    
+    UIView *firstView = [_notesOnStaffArray objectAtIndex:0];
+    UIView *lastView =  [_notesOnStaffArray lastObject];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:[staffKeySpace][firstView]" options:0 metrics:nil views:NSDictionaryOfVariableBindings(firstView, staffKeySpace)]];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:[lastView]-(30)-|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(lastView)]];
+    
+    for (UIView *staffView in _notesOnStaffArray) {
+        if (previousView) {
+            [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:[previousView][staffView]" options:0 metrics:nil views:NSDictionaryOfVariableBindings(previousView, staffView)]];
+        }
+        previousView = staffView;
+    }
+}
+
+- (StaffAutoLean *) buildClef {
+    StaffAutoLean *staffAutoClef = [[StaffAutoLean alloc] initAsClef:_currentClef];
+    [staffAutoClef setAlpha:0.];
+    [_staffView addSubview:staffAutoClef];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[staffAutoClef]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAutoClef)]];
+    return staffAutoClef;
+}
+
+
+- (StaffAutoLean *)buildSpacer {
+    StaffAutoLean *staffAutoSpacer = [[StaffAutoLean alloc] initAsSpacer];
+    [staffAutoSpacer setAlpha:0.];
+    [staffAutoSpacer setType:kSpacer];
+    [_staffView addSubview:staffAutoSpacer];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[staffAutoSpacer]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAutoSpacer)]];
+    
+    return staffAutoSpacer;
+}
+
+- (StaffAutoLean *)buildKeyStaff {
+    StaffAutoLean *staffAutoKey = [[StaffAutoLean alloc] initAsKey:_currentKey withClef:_currentClef];
+    [staffAutoKey setAlpha:0.];
+    [staffAutoKey setType:kKey];
+    [_staffView addSubview:staffAutoKey];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[staffAutoKey]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAutoKey)]];
+    
+    return staffAutoKey;
+}
+
+- (StaffAutoLean *)buildStaffWithNote {
+    StaffAutoLean *staffAuto = [[StaffAutoLean alloc] initWithFrame:CGRectZero];
+    [staffAuto setAlpha:0.];
+    [staffAuto setType:kWithNote];
+    [_staffView addSubview:staffAuto];
+    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[staffAuto]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(staffAuto)]];
+    return staffAuto;
+}
+
 
 - (void)placeStaff {    
     NSString *keyNameInPicker = [_orderedKeyNames objectAtIndex: [_optionPicker selectedRowInComponent:1]];
@@ -236,6 +373,22 @@
 - (void)backButtonPressed {
     [self dismissViewControllerAnimated:YES completion:nil];
 }
+
+
+
+- (void)animateWithObjectAtIndex:(int)index {
+    ViewController *thisViewController = self;
+    if ([_staffArray count] > index)        {
+        StaffAutoLean *staffAuto = [_staffArray objectAtIndex:index];
+        [UIView animateWithDuration:0.05 animations:^{
+            [staffAuto setAlpha:1.0];
+        } completion:^(BOOL finished) {
+            int newIndex = index+1;
+            [thisViewController animateWithObjectAtIndex:newIndex];
+        }] ;
+    }
+}
+
 
 
 
